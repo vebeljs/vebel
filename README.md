@@ -6,7 +6,7 @@ Unlike **re-rendering the whole component**, Vebel only updates the exact DOM no
 ## Installation
 
 ```bash
-npx vebel create my-app
+npx @vebeljs/vebel create my-app
 cd my-app
 npm start
 ```
