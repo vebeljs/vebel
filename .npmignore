@@ -1,0 +1,8 @@
+src/
+*.config.js
+*.config.ts
+tsconfig.json
+.github/
+tests/
+*.test.ts
+node_modules/

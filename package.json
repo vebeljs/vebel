@@ -1,0 +1,60 @@
+{
+  "name": "@vebeljs/vebel",
+  "version": "1.0.3",
+  "description": "A reactive jsx based js library",
+  "author": "Himanshu chaudhari",
+  "license": "MIT",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "vebel": "./cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs.js",
+      "import": "./dist/index.esm.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./jsx-runtime": {
+      "require": "./dist/jsx-runtime.cjs.js",
+      "import": "./dist/jsx-runtime.esm.js"
+    },
+    "./jsx-dev-runtime": {
+      "require": "./dist/jsx-runtime.cjs.js",
+      "import": "./dist/jsx-runtime.esm.js"
+    },
+    "./plugins/*": "./plugins/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "plugins",
+    "cli",
+    "jsx-runtime",
+    "jsx-dev-runtime"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "build:types": "tsc --emitDeclarationOnly",
+    "prepare": "npm run build",
+    "dev": "rollup -c --watch"
+  },
+  "dependencies": {
+    "@babel/plugin-syntax-jsx": "^7.28.6",
+    "commander": "^12.1.0",
+    "fs-extra": "^11.3.4",
+    "tslib": "^2.8.1",
+    "vite": "^5.4.21",
+    "vite-plugin-babel": "^1.6.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.x",
+    "@rollup/plugin-babel": "^7.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "rollup": "^4.60.3",
+    "rollup-plugin-dts": "^6.4.1",
+    "typescript": "^6.0.3"
+  }
+}
