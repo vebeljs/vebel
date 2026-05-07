@@ -3,6 +3,14 @@
 A lightweight JavaScript UI framework with fine-grained reactivity without virtual DOM overhead.
 Unlike **re-rendering the whole component**, Vebel only updates the exact DOM node where state is used.
 
+## Installation
+
+```bash
+npx vebel create my-app
+cd my-app
+npm start
+```
+
 ## Why Vebel?
 
 It became hectic to manage code when the entire component tree re-renders on every state change.  
@@ -18,14 +26,6 @@ function App() {
     </button>
   );
 }
-```
-
-## Installation
-
-```bash
-npx @vebeljs/vebel create my-app
-cd my-app
-npm start
 ```
 
 ## Manual Setup
@@ -62,7 +62,11 @@ renderApp();
 
 ## Documentation
 
-Full docs, guides and API reference → **...**
+Full docs, guides and API reference → [Vebel docs](https://vebeljs.github.io/docs)
+
+## Author
+
+Created by [Himanshu Chaudhari](https://github.com/Himansh2810)
 
 ## License
 

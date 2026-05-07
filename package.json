@@ -1,9 +1,33 @@
 {
   "name": "@vebeljs/vebel",
   "version": "1.0.3",
-  "description": "A reactive jsx based js library",
+  "description": "Lightweight JSX framework with fine-grained reactivity — no virtual DOM, no full re-renders.",
   "author": "Himanshu chaudhari",
   "license": "MIT",
+  "homepage": "https://vebeljs.github.io/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vebeljs/vebel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vebeljs/vebel/issues"
+  },
+  "keywords": [
+    "vebel",
+    "framework",
+    "ui",
+    "reactive",
+    "fine-grained-reactivity",
+    "no-rerender",
+    "jsx",
+    "frontend",
+    "lightweight",
+    "state-management",
+    "signals",
+    "dom",
+    "component",
+    "spa"
+  ],
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
