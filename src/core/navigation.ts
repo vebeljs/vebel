@@ -98,14 +98,16 @@ class VebelNavigation {
     // ── Must have at least one discriminant ───────────────────────────────
     if (!hasComponent && !hasLayout) {
       throw new VebelError(
-        `[Vebel.NavigationError]: In defineRoute, '${path}':  Must have either "component" (leaf route) or "layout" (layout route).`,
+        "Navigation",
+        `In defineRoute, '${path}':  Must have either "component" (leaf route) or "layout" (layout route).`,
       );
     }
 
     // ── Cannot mix both discriminants ─────────────────────────────────────
     if (hasComponent && hasLayout) {
       throw new VebelError(
-        `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+        "Navigation",
+        `In defineRoute, '${path}': ` +
           '"component" and "layout" cannot both be defined. ' +
           'Use "component" for a leaf route or "layout" for a layout route, not both.',
       );
@@ -115,19 +117,22 @@ class VebelNavigation {
     if (hasComponent) {
       if (typeof route.component !== "function") {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `: In defineRoute, '${path}': ` +
             '"component" must be a function/component.',
         );
       }
       if (hasLayout) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"layout" is not allowed on a leaf route. Remove "layout", or remove "component" and add "children" to make it a layout route.',
         );
       }
       if (hasChildren) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"children" is not allowed on a leaf route. ' +
             'To nest routes, remove "component" and use "layout" + "children" instead.',
         );
@@ -139,40 +144,46 @@ class VebelNavigation {
     if (hasLayout) {
       if (typeof route.layout !== "function") {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"layout" must be a function/component.',
         );
       }
       if (!hasChildren) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"children" is required when "layout" is defined. ' +
             'Add a "children" object with at least one nested route.',
         );
       }
       if (typeof route.children !== "object" || Array.isArray(route.children)) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"children" must be a plain object (RouteMap).',
         );
       }
       if (Object.keys(route.children as object).length === 0) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"children" cannot be empty. Add at least one nested route, ' +
             'or remove "layout" and use "component" instead.',
         );
       }
       if (hasConfig) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"config" is not allowed on a layout route. ' +
             'Move "config" into individual child routes that have a "component".',
         );
       }
       if (hasComponent) {
         throw new VebelError(
-          `[Vebel.NavigationError]: In defineRoute, '${path}': ` +
+          "Navigation",
+          `In defineRoute, '${path}': ` +
             '"component" is not allowed on a layout route. ' +
             'Use "layout" for the wrapping shell and put page components inside "children".',
         );
@@ -183,7 +194,8 @@ class VebelNavigation {
 
     // Should never reach here given the checks above
     throw new VebelError(
-      `[Vebel.NavigationError]: In defineRoute, '${path}'. Please provide valid route config.`,
+      "Navigation",
+      `In defineRoute, '${path}'. Please provide valid route config.`,
     );
   }
 
@@ -239,7 +251,7 @@ class VebelNavigation {
     path = this.#normalizePath(path);
 
     if (!path.startsWith("/")) {
-      throw new VebelError("Route path must start with '/'");
+      throw new VebelError("Navigation", "Route path must start with '/'");
     }
 
     const rootLayout = this.#layouts[0];
@@ -253,13 +265,15 @@ class VebelNavigation {
   ) => {
     if (Object.keys(this.#routes).length > 0) {
       throw new VebelError(
-        `[Vebel.Navigation]: Routes has been already defined. Can't create new instance. Modify existing.`,
+        "Navigation",
+        `Routes has been already defined. Can't create new instance. Modify existing.`,
       );
     }
 
     if (!children) {
       throw new VebelError(
-        `[Vebel.Navigation]: 'children' argument missing from routes or provide appropriate value`,
+        "Navigation",
+        `'children' argument missing from routes or provide appropriate value`,
       );
     }
 
@@ -284,6 +298,7 @@ class VebelNavigation {
         } else {
           if (!route?.component)
             throw new VebelError(
+              "Navigation",
               "Component Not provided for wildcard route '*'",
             );
           this.#NotFoundPage = {
@@ -359,7 +374,10 @@ class VebelNavigation {
           layoutRoute: {},
           path: null,
         };
-      throw new VebelError(`INVALID ROUTE: '${path}' route is not define.`);
+      throw new VebelError(
+        "Navigation",
+        `INVALID ROUTE, '${path}' route is not define.`,
+      );
     }
 
     const globalRoute = this.#layouts[0] || {};

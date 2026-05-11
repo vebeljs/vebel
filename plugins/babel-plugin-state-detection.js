@@ -145,7 +145,6 @@ module.exports = function ({ types: t }) {
 
     const stateArr = stateVars.reduce((acc, crr) => {
       if (!prevSv.has(crr)) {
-        // acc.push(t.objectProperty(t.identifier(crr), t.identifier(crr)));
         acc.push(t.identifier(crr));
         prevSv.add(crr);
       }
@@ -219,7 +218,7 @@ module.exports = function ({ types: t }) {
 
     path.traverse({
       Function(innerPath) {
-        innerPath.skip(); // 🚫 stop going inside functions
+        innerPath.skip();
       },
       MemberExpression(mbPath) {
         const memberProp = traverseStateProperty(mbPath, stateRef);
@@ -246,6 +245,93 @@ module.exports = function ({ types: t }) {
     return stateVars;
   }
 
+  function isPrimitiveReactiveBranch(path, stateRef) {
+    let hasJSX = false;
+
+    path.traverse({
+      JSXElement(jsxPath) {
+        hasJSX = true;
+        jsxPath.stop();
+      },
+
+      JSXFragment(jsxPath) {
+        hasJSX = true;
+        jsxPath.stop();
+      },
+    });
+
+    if (hasJSX) return false;
+
+    const states = traverseNode(path, stateRef);
+
+    return states.length > 0;
+  }
+
+  function containsJSX(path) {
+    if (path.isJSXElement() || path.isJSXFragment()) {
+      return true;
+    }
+
+    let found = false;
+
+    path.traverse({
+      JSXElement(p) {
+        found = true;
+        p.stop();
+      },
+
+      JSXFragment(p) {
+        found = true;
+        p.stop();
+      },
+    });
+
+    return found;
+  }
+
+  function flattenArrayElements(paths, statesRef) {
+    const result = [];
+
+    paths.forEach((elementPath) => {
+      if (!elementPath?.node) return;
+
+      // nested array
+      if (elementPath.isArrayExpression()) {
+        result.push(
+          ...flattenArrayElements(elementPath.get("elements"), statesRef),
+        );
+
+        return;
+      }
+
+      const stateVars = traverseNode(elementPath, statesRef);
+
+      // static
+      if (!stateVars.length) {
+        result.push(elementPath.node);
+
+        return;
+      }
+
+      // reactive
+      result.push(
+        t.objectExpression([
+          t.objectProperty(
+            t.identifier("states"),
+            t.arrayExpression(getStateConfig(stateVars)),
+          ),
+
+          t.objectProperty(
+            t.identifier("eval"),
+            t.arrowFunctionExpression([], elementPath.node),
+          ),
+        ]),
+      );
+    });
+
+    return result;
+  }
+
   function isComponentPropExpression(path, systemComponents) {
     const attrPath = path.parentPath;
     if (!attrPath?.isJSXAttribute()) return false;
@@ -269,6 +355,7 @@ module.exports = function ({ types: t }) {
     pre() {
       this.stateTable = null;
       this.systemComponents = [];
+      this.indexTracker = new Map();
     },
     visitor: {
       ImportDeclaration(path, state) {
@@ -283,10 +370,6 @@ module.exports = function ({ types: t }) {
                 state.systemComponents?.push(spec.local.name);
               }
             }
-
-            // if (spec.imported.name === "For") {
-            //   state.systemComponents?.push(spec.local.name);
-            // }
           });
         }
       },
@@ -373,6 +456,61 @@ module.exports = function ({ types: t }) {
         }
       },
 
+      JSXElement: {
+        enter(path, state) {
+          if (
+            !path.get("openingElement.name").isJSXIdentifier({ name: "For" })
+          ) {
+            return;
+          }
+
+          const eachAttr = path
+            .get("openingElement.attributes")
+            .find((attr) => attr.node.name?.name === "each");
+
+          if (!eachAttr) return;
+
+          const children = path.get("children");
+
+          const exprContainer = children.find((child) =>
+            child.isJSXExpressionContainer(),
+          );
+
+          if (!exprContainer) return;
+
+          const exprPath = exprContainer.get("expression");
+
+          if (!exprPath.isArrowFunctionExpression()) {
+            return;
+          }
+
+          const params = exprPath.get("params");
+          if (!params[1]?.isIdentifier()) {
+            return;
+          }
+          const indexState = params[1].node.name;
+
+          state.stateTable?.add(indexState);
+          state.indexTracker?.set(
+            indexState,
+            (state.indexTracker?.get(indexState) || 0) + 1,
+          );
+          path.setData("index_state", indexState);
+        },
+
+        exit(path, state) {
+          const indexStateName = path.getData("index_state");
+          if (indexStateName) {
+            const count = (state.indexTracker?.get(indexStateName) || 0) - 1;
+            if (count <= 0) {
+              state.stateTable?.delete(indexStateName);
+            } else {
+              state.stateTable?.set(indexStateName, count);
+            }
+          }
+        },
+      },
+
       // inside your plugin visitor
       JSXExpressionContainer: {
         enter(path, state) {
@@ -384,12 +522,110 @@ module.exports = function ({ types: t }) {
 
           if (exprPath?.isConditionalExpression()) return;
 
-          if (isComponentPropExpression(path, this.systemComponents)) return;
-
           const statesRef = (state && state.stateTable) || this.stateTable;
           if (!statesRef) return;
 
-          // const { localStates = {}, extStates = {} } = stateProps ?? {};
+          if (exprPath?.isLogicalExpression()) {
+            const { left, right, operator } = exprPath.node;
+
+            const leftPath = exprPath.get("left");
+            const rightPath = exprPath.get("right");
+
+            const leftStateVars = traverseNode(leftPath, statesRef);
+
+            if (!leftStateVars.length) return;
+
+            const shouldSkipConditionTransform =
+              (operator === "||" || operator === "??") &&
+              !containsJSX(rightPath);
+
+            if (
+              !shouldSkipConditionTransform &&
+              ["&&", "||", "??"].includes(operator)
+            ) {
+              const stateArr = getStateConfig(leftStateVars);
+
+              let evalNode;
+
+              if (operator === "&&" || operator === "||") {
+                evalNode = left;
+              } else if (operator === "??") {
+                evalNode = t.binaryExpression("!=", left, t.nullLiteral());
+              }
+
+              const rightReEval = isPrimitiveReactiveBranch(
+                rightPath,
+                statesRef,
+              );
+
+              const thenReEval = operator === "&&" ? rightReEval : true;
+
+              const elseReEval = operator === "&&" ? false : rightReEval;
+
+              const conditionData = [
+                t.objectProperty(
+                  t.identifier("eval"),
+                  t.arrowFunctionExpression([], evalNode),
+                ),
+
+                t.objectProperty(
+                  t.identifier("states"),
+                  t.arrayExpression(stateArr),
+                ),
+
+                t.objectProperty(
+                  t.identifier("then"),
+                  t.arrowFunctionExpression(
+                    [],
+                    operator === "&&" ? right : left,
+                  ),
+                ),
+
+                t.objectProperty(
+                  t.identifier("else"),
+                  t.arrowFunctionExpression(
+                    [],
+                    operator === "&&" ? t.nullLiteral() : right,
+                  ),
+                ),
+
+                t.objectProperty(
+                  t.identifier("thenReEval"),
+                  t.booleanLiteral(thenReEval),
+                ),
+
+                t.objectProperty(
+                  t.identifier("elseReEval"),
+                  t.booleanLiteral(elseReEval),
+                ),
+              ];
+
+              const wrappedExpression = t.objectExpression(conditionData);
+
+              path.replaceWith(t.jsxExpressionContainer(wrappedExpression));
+
+              path.skip();
+
+              return;
+            }
+          }
+
+          if (isComponentPropExpression(path, this.systemComponents)) return;
+
+          if (exprPath?.isArrayExpression()) {
+            const flatElements = flattenArrayElements(
+              exprPath.get("elements"),
+              statesRef,
+            );
+
+            path.replaceWith(
+              t.jsxExpressionContainer(t.arrayExpression(flatElements)),
+            );
+
+            path.skip();
+
+            return;
+          }
 
           const node = exprPath.node;
 
@@ -438,6 +674,12 @@ module.exports = function ({ types: t }) {
 
           if (!testStateVars.length) return;
 
+          const consequentPath = path.get("expression.consequent");
+          const alternatePath = path.get("expression.alternate");
+
+          const c = isPrimitiveReactiveBranch(consequentPath, stateRef);
+          const a = isPrimitiveReactiveBranch(alternatePath, stateRef);
+
           const stateArr = getStateConfig(testStateVars);
 
           let conditionData = [
@@ -449,6 +691,8 @@ module.exports = function ({ types: t }) {
               t.identifier("states"),
               t.arrayExpression(stateArr),
             ),
+            t.objectProperty(t.identifier("thenReEval"), t.booleanLiteral(c)),
+            t.objectProperty(t.identifier("elseReEval"), t.booleanLiteral(a)),
           ];
 
           const CONDITION_KEYS = [

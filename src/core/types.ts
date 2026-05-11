@@ -147,20 +147,22 @@ type AttrUseObj = {
 };
 
 type IfBlockConfig = {
-  elementRange: Range;
+  startRef: Comment;
+  endRef: Comment;
   cmpId: string;
   prevVal: boolean;
   childBlock: string;
 } & JSXConditionObj;
 
 interface LoopBlockConfig {
-  renderElement?: (item: any, index: number) => HTMLElement;
+  renderElement?: (item: any, index: () => number) => HTMLElement;
   startRef: Comment;
   endRef: Comment;
-  keyExtractor?: (item: any, index: number) => string | number;
+  keyExtractor?: (item: any, index: () => number) => string | number;
   cmpId?: string;
   childBlocks?: Set<string>;
   data?: JSXExpressionObj;
+  indexRefs?: State<number>[];
 }
 
 type StateUsageConfig =
@@ -330,6 +332,8 @@ interface JSXConditionObj {
   states: State<any>[];
   then: () => HTMLElement | ChildNode | DocumentFragment;
   else: () => HTMLElement | ChildNode | DocumentFragment;
+  thenReEval: boolean;
+  elseReEval: boolean;
 }
 
 const LIST_MARKER = Symbol("VEBEL_LIST");

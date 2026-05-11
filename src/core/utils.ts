@@ -101,53 +101,6 @@ const isEqual = (a, b) => {
   return deepEqual(a, b);
 };
 
-function estimateObjectSize(...args): string {
-  let totalSize = 0;
-  args.forEach((obj) => {
-    const seen = new WeakSet();
-
-    function sizeOf(value: any): number {
-      if (value === null || value === undefined) return 0;
-
-      const type = typeof value;
-
-      // Primitives
-      if (type === "boolean") return 4;
-      if (type === "number") return 8;
-      if (type === "string") return value.length * 2;
-      if (type === "symbol") return 0;
-      if (type === "function") return 0;
-
-      // If already seen, skip (avoid circular references)
-      if (seen.has(value)) return 0;
-      seen.add(value);
-
-      // Arrays
-      if (Array.isArray(value)) {
-        return value.map(sizeOf).reduce((acc, cur) => acc + cur, 0);
-      }
-
-      // Objects
-      if (type === "object") {
-        let size = 0;
-        for (let key in value) {
-          if (value.hasOwnProperty(key)) {
-            size += key.length * 2; // key size (as string)
-            size += sizeOf(value[key]);
-          }
-        }
-        return size;
-      }
-
-      return 0;
-    }
-
-    totalSize += sizeOf(obj);
-  });
-
-  return `${(totalSize / 1024).toFixed(3)} KB`;
-}
-
 function isComponentFunction(
   fn: Function,
   callback: (error: string) => void,
@@ -216,32 +169,6 @@ function styleObjectToCss(obj: { [key: string]: string | number }) {
   );
 }
 
-function removeValueFromObject(o: any, target: string) {
-  if (Array.isArray(o)) {
-    // remove the target value
-    return o.filter((item) => item !== target);
-  } else if (o && typeof o === "object") {
-    for (const key in o) {
-      o[key] = removeValueFromObject(o[key], target);
-
-      // OPTIONAL: delete key if its array became empty
-      if (Array.isArray(o[key]) && o[key].length === 0) {
-        delete o[key];
-      }
-    }
-  }
-  return o;
-}
-
-function isDOMStructure(value: any) {
-  return (
-    value &&
-    typeof value === "object" &&
-    typeof value.nodeType === "number" &&
-    [1, 3, 8, 11].includes(value.nodeType)
-  );
-}
-
 const SVG_TAGS = new Set([
   "svg",
   "g",
@@ -275,25 +202,16 @@ function isLazyChildren(value: any): value is Vebeljs.AsyncComponent {
   );
 }
 
-const delay = (time: number) =>
-  new Promise((res) => {
-    setTimeout(() => res(1), time);
-  });
-
 export {
   isEqual,
   reservedJSKeys,
   selfClosingTags,
-  estimateObjectSize,
   isComponentFunction,
   isPlainObject,
   isCamelCase,
   styleObjectToCss,
-  removeValueFromObject,
   isJSXExpressionObj,
   isJSXConditionObj,
-  isDOMStructure,
   isLazyChildren,
-  delay,
   SVG_TAGS,
 };

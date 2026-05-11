@@ -1,15 +1,19 @@
 class VebelError extends Error {
-  constructor(message: string) {
+  constructor(module: string, message: string) {
     super(message);
-    this.name = "VebelError";
+
+    this.name = `VebelError [${module}]`;
 
     if (this.stack) {
       const lines = this.stack.split("\n");
+
       this.stack = [
         lines[0],
         ...lines.filter(
           (line) =>
-            !line.includes("VebelJS") && !line.includes("VebelNavigation"),
+            !line.includes("node_modules/vebel") &&
+            !line.includes("VebelJS") &&
+            !line.includes("internal"),
         ),
       ].join("\n");
     }

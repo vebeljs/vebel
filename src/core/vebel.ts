@@ -2,7 +2,6 @@ import { VebelError } from "./error.js";
 import { Navigation, VebelNavigation } from "./navigation.js";
 import { SyntheticEvent } from "./event.js";
 import {
-  delay,
   isComponentFunction,
   isEqual,
   isJSXConditionObj,
@@ -108,13 +107,6 @@ class VebelJS {
 
     const engine = this;
 
-    // window.addEventListener("beforeunload", () => {
-    //   localStorage.setItem(
-    //     engine.#PS_MARKER,
-    //     JSON.stringify(engine.#preservedStates),
-    //   );
-    // });
-
     // restore on load
     let data = JSON.parse(localStorage.getItem(this.#PS_MARKER));
     this.#preservedStates = data ?? {};
@@ -129,21 +121,12 @@ class VebelJS {
         );
       }
     });
-
-    // window.addEventListener("load", () => {
-    //   let data = {};
-    //   Object.keys(localStorage).forEach((key) => {
-    //     data[key] = JSON.parse(localStorage.getItem(key));
-    //   });
-    //   localStorage.clear();
-    //   engine.#preservedStates = data;
-    // });
   }
 
   public jsx(fn, props) {
     if (typeof fn === "function") {
       const componentName = isComponentFunction(fn, (e) => {
-        throw new VebelError(e);
+        throw new VebelError("JSX", e);
       });
 
       if (!componentName || fn?.[VEBEL_COMPONENT]) {
@@ -206,7 +189,6 @@ class VebelJS {
       const newValue = typeof val === "function" ? val(oldValue) : val;
       if (isEqual(newValue, oldValue)) return;
       engine.#preservedStates[key] = newValue;
-      // reRender preserveStates ??
       engine.#scheduleRenderBatch(engine.#getComponent(GLOBAL), {
         type: "set",
         state: state as State<V>,
@@ -226,7 +208,7 @@ class VebelJS {
   public createPortal = (children: any, target: HTMLElement) => {
     const isNull = target === null || target === undefined;
     if (!isNull && !(target instanceof HTMLElement)) {
-      throw new VebelError(`[Vebel.Portal]: target should be a HTMlElement.`);
+      throw new VebelError("Portal", `target must be a HTMlElement.`);
     }
     if (isNull) target = document.body;
 
@@ -327,6 +309,26 @@ class VebelJS {
     return false;
   }
 
+  #unifyNodeValue(value: any) {
+    // ignore jsx-invalid render values
+    if (value === true || value === false || value == null) {
+      return document.createTextNode("");
+    }
+
+    // string / number
+    if (typeof value === "string" || typeof value === "number") {
+      return document.createTextNode(String(value));
+    }
+
+    // already a dom node
+    if (value instanceof Node || value instanceof DocumentFragment) {
+      return value;
+    }
+
+    // fallback
+    return document.createTextNode(String(value));
+  }
+
   #configureRange(element: Node, range: Range) {
     const nodes =
       element instanceof DocumentFragment ? [...element.childNodes] : [element];
@@ -339,25 +341,6 @@ class VebelJS {
       range.setStartBefore(first);
       range.setEndAfter(last);
     });
-  }
-
-  #configureElementRange(
-    targetEl: DocumentFragment | HTMLElement | ChildNode,
-    range: Range,
-  ) {
-    let element: DocumentFragment | HTMLElement | ChildNode;
-
-    if (typeof targetEl === "string" || typeof targetEl === "number") {
-      element = document.createTextNode(
-        (targetEl as string | number).toString(),
-      );
-    } else {
-      element = targetEl ? targetEl : document.createTextNode("");
-    }
-
-    this.#configureRange(element, range);
-
-    return element;
   }
 
   #addStateUsageRef(state: object, config: StateUsageConfig) {
@@ -516,11 +499,11 @@ class VebelJS {
     body.innerHTML = "";
     try {
       this.#routeCleanUp();
+      this.#setUpBlock();
       this.#scopeStack.push(this.#getComponent(GLOBAL));
-
       body.append(this.jsx(app, {}));
-
       this.#scopeStack.pop();
+      this.#blockStack.pop();
       this.#runMicrotasks();
       this.#runEffectQueue();
       this.#navigation.resetRouterParams();
@@ -714,7 +697,8 @@ class VebelJS {
     } catch (error) {
       this.#hideLoadingOverlay();
       throw new VebelError(
-        `[Vebel.Navigation]: An error occurred in middleware at path '${path}'. Error: ${error?.message}`,
+        "Navigation",
+        `An error occurred in middleware at path '${path}'. Error: ${error?.message}`,
       );
     }
   }
@@ -814,14 +798,16 @@ class VebelJS {
     if (this.#componentNames.has(componentName)) {
       if (componentName === activeComponent.name) {
         throw new VebelError(
-          `Invalid self-reference: Can't use 'fromParent(...)' for component referencing itself.`,
+          "Component",
+          "Invalid self-reference: cannot use 'fromParent(...)' to reference the current component.",
         );
       }
       let parentCmp = this.#getComponent(activeComponent.parentId);
       while (parentCmp) {
         if (parentCmp.id === GLOBAL) {
           throw new VebelError(
-            `Can't access child component '${componentName}' in '${activeComponent.name}' component.`,
+            "Component",
+            `cannot access child component '${componentName}' from '${activeComponent.name}'.`,
           );
         }
 
@@ -835,7 +821,8 @@ class VebelJS {
       return parentCmp;
     } else {
       throw new VebelError(
-        `Invalid reference at '${activeComponent.name}' component: Component named '${componentName}' doesn't exist or It is not parent of this component.`,
+        "Component",
+        `component '${componentName}' does not exist or is not a parent of '${activeComponent.name}'.`,
       );
     }
   }
@@ -884,7 +871,8 @@ class VebelJS {
     const component = this.#activeComponent();
     if (!component || component.id == GLOBAL) {
       throw new VebelError(
-        `[Vebel.Error]: Can not use 'state()' out of component. Use 'createStore()' instead.`,
+        "State",
+        "cannot use 'state()' outside a component. Use 'createStore()' instead.",
       );
     }
 
@@ -899,7 +887,8 @@ class VebelJS {
 
       if (items !== null && !Array.isArray(items)) {
         throw new VebelError(
-          `[Vebel.Error]: In '${component.name}', at list(), List value must be an array or null.`,
+          "List",
+          `list() in '${component.name}' expects an array or null.`,
         );
       }
 
@@ -949,14 +938,15 @@ class VebelJS {
 
       if (!oldValue) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
       if (index < 0 || index >= oldValue?.length) {
         throw new VebelError(
-          `[Vebel.Error]: list.update(${index}, ..) out of range. ` +
-            `Valid range is 0 to ${oldValue?.length - 1}.`,
+          "List",
+          `list.update(${index}, ...) is out of range. Valid range is 0 to ${oldValue.length - 1}.`,
         );
       }
 
@@ -980,14 +970,15 @@ class VebelJS {
 
       if (!oldValue) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
       if (index < 0 || index >= oldValue?.length) {
         throw new VebelError(
-          `[Vebel.Error]: list.insert(${index}, ..) out of range. ` +
-            `Valid range is 0 to ${oldValue?.length - 1}.`,
+          "List",
+          `list.insert(${index}, ..) out of range. Valid range is 0 to ${oldValue?.length - 1}.`,
         );
       }
 
@@ -1009,7 +1000,8 @@ class VebelJS {
 
       if (!oldValue) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
@@ -1029,7 +1021,8 @@ class VebelJS {
 
       if (!component.states[stateName]) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
@@ -1049,7 +1042,8 @@ class VebelJS {
 
       if (end < start) {
         throw new VebelError(
-          "[Vebel.Error]: list.removeRange(start, end), end must be >= start.",
+          "List",
+          "list.removeRange(start, end), 'end' must be >= 'start'.",
         );
       }
 
@@ -1057,7 +1051,8 @@ class VebelJS {
 
       if (!oldValue) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
@@ -1065,13 +1060,15 @@ class VebelJS {
 
       if (start < 0 || start > len) {
         throw new VebelError(
-          `[Vebel.Error]: list.removeRange(start,end), start out of range (0..${len})`,
+          "List",
+          `list.removeRange(start,end), start out of range (0..${len})`,
         );
       }
 
       if (end < 0 || end > len) {
         throw new VebelError(
-          `[Vebel.Error]: list.removeRange(start,end), end out of range (0..${len})`,
+          "List",
+          `list.removeRange(start,end), end out of range (0..${len})`,
         );
       }
 
@@ -1091,14 +1088,15 @@ class VebelJS {
 
       if (!oldValue) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
       if (index < 0 || index >= oldValue?.length) {
         throw new VebelError(
-          `[Vebel.Error]: list.remove(${index}) out of range. ` +
-            `Valid range is 0 to ${oldValue?.length - 1}.`,
+          "List",
+          `list.remove(${index}) out of range. Valid range is 0 to ${oldValue?.length - 1}.`,
         );
       }
 
@@ -1115,7 +1113,8 @@ class VebelJS {
     list.shift = function () {
       if (!component.states[stateName]) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
@@ -1132,7 +1131,8 @@ class VebelJS {
     list.pop = function () {
       if (!component.states[stateName]) {
         throw new VebelError(
-          `[Vebel.Error]: List is null. Set list as array using list.set([]) before modifying it.`,
+          "List",
+          "cannot modify a null list. Use list.set([]) before modifying it.",
         );
       }
 
@@ -1156,9 +1156,7 @@ class VebelJS {
         }
       },
       set() {
-        throw new VebelError(
-          `[Vebel.Error]: List '${stateName}' is read-only.`,
-        );
+        throw new VebelError("List", `list '${stateName}' is read-only.`);
       },
       enumerable: true,
     });
@@ -1183,7 +1181,8 @@ class VebelJS {
     for (const stateName in config) {
       if (component.states[stateName]) {
         throw new VebelError(
-          `[Vebel.Error]: In GlobalStore, key '${stateName}' already exists in some store, try another key.`,
+          "GlobalStore",
+          `key '${stateName}' already exists in another store. Use a different key.`,
         );
       }
       const value = config[stateName];
@@ -1192,7 +1191,8 @@ class VebelJS {
         const items = value.value;
         if (items !== null && !Array.isArray(items)) {
           throw new VebelError(
-            `[Vebel.Error]: In GlobalStore, List '${stateName}' value must be an array or null.`,
+            "GlobalStore",
+            `list '${stateName}' must be an array or null.`,
           );
         }
         component.states[stateName] = items;
@@ -1218,7 +1218,8 @@ class VebelJS {
   public useGlobal = <T>(store: T): T => {
     if (!store || store[this.#GLOBAL_STORE_MARK] !== true) {
       throw new VebelError(
-        `[Vebel.Error]: 'useGlobal(..)' Argument is not a global store.`,
+        "GlobalStore",
+        "'useGlobal(...)' expects a global store.",
       );
     }
 
@@ -1236,7 +1237,8 @@ class VebelJS {
       const parentComp = this.#getComponent(activeComponent.parentId);
       if (!parentComp || parentComp.id === GLOBAL) {
         throw new VebelError(
-          `[Vebel.Component]: Parent component of '${activeComponent.name}' doesn't exist.`,
+          "Component",
+          `parent component of '${activeComponent.name}' does not exist.`,
         );
       }
 
@@ -1245,7 +1247,8 @@ class VebelJS {
 
     if (!componentName || typeof componentName !== "string") {
       throw new VebelError(
-        `[Vebel.Component]: At '${activeComponent.name}' fromParent(...),  Ancestor component name must be string.`,
+        "Component",
+        `fromParent(...) in '${activeComponent.name}' expects the ancestor component name to be a string.`,
       );
     }
 
@@ -1278,7 +1281,8 @@ class VebelJS {
             if (typeof p !== "string") return undefined;
             if (!Object.hasOwn(target, p)) {
               throw new VebelError(
-                `[Vebel.Error]: State '${p}' doesn't exist on '${targetComponent.name}' component. declare one using state(initialVal,'${p}')`,
+                "PropState",
+                `state '${p}' does not exist in '${targetComponent.name}'. Declare it using state(initialValue, '${p}').`,
               );
             }
             return target[p];
@@ -1286,9 +1290,7 @@ class VebelJS {
         });
       },
       set() {
-        throw new VebelError(
-          `[Vebel.Error]: ParentScope can't set explicitly.`,
-        );
+        throw new VebelError("PropState", "cannot set ParentScope explicitly.");
       },
       enumerable: true,
     });
@@ -1300,7 +1302,8 @@ class VebelJS {
             if (typeof p !== "string") return undefined;
             if (!Object.hasOwn(target, p)) {
               throw new VebelError(
-                `[Vebel.Error]: List '${p}' doesn't exist on '${targetComponent.name}' component. declare one using state(list(initialVal),'${p}')`,
+                "PropState",
+                `list '${p}' does not exist in '${targetComponent.name}'. Declare it using state(list(initialValue), '${p}').`,
               );
             }
             return target[p];
@@ -1308,9 +1311,7 @@ class VebelJS {
         });
       },
       set() {
-        throw new VebelError(
-          `[Vebel.Error]: ParentScope can't set explicitly.`,
-        );
+        throw new VebelError("PropState", "cannot set ParentScope explicitly.");
       },
       enumerable: true,
     });
@@ -1322,37 +1323,32 @@ class VebelJS {
 
   #validateStateName(stateName: string, component: Component) {
     if (typeof stateName !== "string") {
-      throw new VebelError("State name must be of string type.");
+      throw new VebelError(
+        "State",
+        `At ${component.name}, state name must be a string.`,
+      );
     }
 
     stateName = stateName.trim();
 
-    if (this.#componentNames.has(stateName)) {
-      if (stateName === component.name) {
-        throw new VebelError(
-          `Restricted state name: State "${stateName}" conflicts with component name "${stateName}".Please choose a different state name.`,
-        );
-      }
-      throw new VebelError(
-        `Restricted state name: State '${stateName}' conflicts with parent/ancestor component name "${stateName}".State names cannot be the same as any parent/ancestor component name.`,
-      );
-    }
-
     if (!/^[$A-Z_a-z][$\w]*$/.test(stateName)) {
       throw new VebelError(
-        `Invalid state name '${stateName}': State names must start with a letter, $, or _ and only contain alphanumeric characters, $, or _.`,
+        "State",
+        `invalid state name '${stateName}'. State names must start with a letter, '$', or '_' and contain only alphanumeric characters, '$', or '_'.`,
       );
     }
 
     if (reservedJSKeys.has(stateName)) {
       throw new VebelError(
-        `Invalid state name '${stateName}': JavaScript keywords are not allowed as State name.`,
+        "State",
+        `invalid state name '${stateName}'. JavaScript keywords are not allowed.`,
       );
     }
 
     if (Object.hasOwn(component.states, stateName)) {
       throw new VebelError(
-        `State '${stateName}' is already declared in this component '${component.name}'.`,
+        "State",
+        `state '${stateName}' is already declared in '${component.name}'.`,
       );
     }
   }
@@ -1374,11 +1370,14 @@ class VebelJS {
     const { runOnMount = true, phase = "effect" } = options;
 
     if (typeof fn !== "function") {
-      throw new VebelError("Effect must be a function");
+      throw new VebelError("Effect", "effect must be a function.");
     }
 
     if (depends && !Array.isArray(depends)) {
-      throw new VebelError("Effect dependencies must be a array of states");
+      throw new VebelError(
+        "Effect",
+        "effect dependencies must be an array of states.",
+      );
     }
 
     const component = this.#activeComponent();
@@ -1494,20 +1493,26 @@ class VebelJS {
 
     const isTrue = !!data.eval();
 
-    const range = new Range();
+    const fragment = document.createDocumentFragment();
+    const startRef = document.createComment("");
+    const endRef = document.createComment("");
+    fragment.appendChild(startRef);
+
     const blockId = this.#setUpBlock();
 
     const value = isTrue ? data.then() : data.else();
 
     this.#blockStack.pop();
 
-    const ele = this.#configureElementRange(value, range);
+    fragment.appendChild(this.#unifyNodeValue(value));
+    fragment.appendChild(endRef);
 
     for (let state of data?.states) {
       this.#addStateUsageRef(state, {
         type: "condition",
         config: {
-          elementRange: range,
+          startRef,
+          endRef,
           cmpId: SCOPE,
           prevVal: isTrue,
           childBlock: blockId,
@@ -1516,24 +1521,20 @@ class VebelJS {
       });
     }
 
-    return ele;
+    return fragment;
   }
 
   public For = (
     each: any[],
-    children: (item: any, index: number) => HTMLElement,
-    keyExtractor?: (item: any, index: number) => string | number,
+    children: (item: any, index: State<number>) => HTMLElement,
+    keyExtractor?: (item: any, index: State<number>) => string | number,
   ) => {
     if (!isJSXExpressionObj(each)) {
-      throw new VebelError(
-        `[Vebel.For]: Received a non-reactive value for 'each' , it must be a reactive state array.`,
-      );
+      throw new VebelError("For", "'each' must be a reactive state array.");
     }
 
     if (typeof children !== "function") {
-      throw new VebelError(
-        `[Vebel.For]: 'children' must be a render function.`,
-      );
+      throw new VebelError("For", "'children' must be a render function.");
     }
 
     const data = each as JSXExpressionObj;
@@ -1543,24 +1544,30 @@ class VebelJS {
 
     const items: any[] = data.eval();
 
+    if (!Array.isArray(items)) {
+      throw new VebelError("For", "'each' must contain an array.");
+    }
+
     const fragment = document.createDocumentFragment();
-    const startRef = document.createComment("--For-start--");
-    const endRef = document.createComment("--For-end--");
+    const startRef = document.createComment("");
+    const endRef = document.createComment("");
     fragment.appendChild(startRef);
 
     const childBlocks = [];
 
+    const indexRefs = [];
+
     items.forEach((item, index) => {
+      const indexSignal = this.state(index);
+      indexRefs.push(indexSignal);
       const blockId = this.#setUpBlock();
       childBlocks.push(blockId);
-      const child = children(item, index);
+      const child = children(item, indexSignal);
       if (child instanceof DocumentFragment) {
-        throw new VebelError("[Vebel.For]: Render item can not be a Fragment.");
+        throw new VebelError("For", "rendered items cannot be Fragments.");
       }
       this.#blockStack.pop();
-
       child.blockId = blockId;
-
       fragment.appendChild(child);
     });
 
@@ -1601,7 +1608,8 @@ class VebelJS {
         frag.appendChild(Loader());
       } else {
         throw new VebelError(
-          `[Vebel.Error]: Loader in <Await> must return Html Element / Document fragment.`,
+          "Await",
+          "loader must return an HTMLElement or DocumentFragment.",
         );
       }
     }
@@ -1672,7 +1680,6 @@ class VebelJS {
     } else if (isLazyChildren(children)) {
       const { importFn, props, exportKey } = children;
 
-      await delay(1200);
       const Temp = await importFn();
 
       if (data !== window.location.pathname) return 1;
@@ -1680,11 +1687,13 @@ class VebelJS {
       if (!Temp[exportKey]) {
         if (exportKey === "default") {
           throw new VebelError(
-            `load(): module has no default export. Make sure your component uses "export default".`,
+            "Load",
+            'module has no default export. Use "export default".',
           );
         } else {
           throw new VebelError(
-            `load(): module has no '${exportKey}' named export. Make sure your component uses "export {${exportKey}}".`,
+            "Load",
+            `module has no named export '${exportKey}'. Use "export { ${exportKey} }".`,
           );
         }
       }
@@ -1795,17 +1804,24 @@ class VebelJS {
 
     const crrVal = !!ifBlock.eval();
 
+    const reEval = crrVal ? ifBlock.thenReEval : ifBlock.elseReEval;
+
     if (ifBlock.prevVal !== crrVal) {
-      const range = ifBlock.elementRange;
-      range.deleteContents();
+      let current = ifBlock.startRef.nextSibling;
+
+      while (current && current !== ifBlock.endRef) {
+        const next = current.nextSibling;
+        current.remove();
+        current = next;
+      }
+
       this.#unmount(ifBlock.childBlock);
       this.#scopeStack.push(component);
       this.#setUpBlock(ifBlock.childBlock);
       const value = crrVal ? ifBlock.then() : ifBlock.else();
       this.#blockStack.pop();
       this.#scopeStack.pop();
-      const rangedValue = this.#configureElementRange(value, range);
-      range.insertNode(rangedValue);
+      ifBlock.endRef.before(this.#unifyNodeValue(value));
       ifBlock.prevVal = crrVal;
     }
   }
@@ -1816,7 +1832,9 @@ class VebelJS {
     cmpId: string,
   ) {
     if (batchObj.type === "update") {
-      const existingNode = this.#getNodeAt(blockConfig, batchObj.index);
+      const { index, value } = batchObj;
+      const existingNode = this.#getNodeAt(blockConfig, index);
+
       if (!existingNode) return;
       const prevBlockId = existingNode.blockId;
 
@@ -1827,7 +1845,11 @@ class VebelJS {
 
       const blockId = this.#setUpBlock();
       blockConfig.childBlocks.add(blockId);
-      let newNode = blockConfig.renderElement(batchObj.value, batchObj.index);
+      let newNode = blockConfig.renderElement(
+        value,
+        blockConfig.indexRefs[index],
+      );
+
       this.#blockStack.pop();
 
       this.#scopeStack.pop();
@@ -1841,24 +1863,25 @@ class VebelJS {
     }
 
     if (batchObj.type === "insert") {
-      const refNode = this.#getNodeAt(blockConfig, batchObj.index);
+      const { index, values } = batchObj;
+      const refNode = this.#getNodeAt(blockConfig, index);
       if (!refNode) return;
+      const { indexRefs } = blockConfig;
 
       this.#scopeStack.push(
         this.#getComponent(cmpId),
         this.#getComponent(blockConfig.cmpId),
       );
 
-      for (let i = 0; i < batchObj.values.length; i++) {
-        const itemIndex = batchObj.index + i;
+      for (let i = 0; i < values.length; i++) {
+        const indexSignal = this.state(index + i);
+
+        indexRefs.splice(index + i, 0, indexSignal);
 
         const blockId = this.#setUpBlock();
         blockConfig.childBlocks.add(blockId);
 
-        const newNode = blockConfig.renderElement(
-          batchObj.values[i],
-          itemIndex,
-        );
+        const newNode = blockConfig.renderElement(values[i], indexSignal);
         this.#blockStack.pop();
 
         newNode.blockId = blockId;
@@ -1867,26 +1890,37 @@ class VebelJS {
       }
       this.#scopeStack.pop();
       this.#scopeStack.pop();
+
+      for (let i = index; i < indexRefs.length; i++) {
+        indexRefs[i].set(i);
+      }
     }
 
     if (batchObj.type === "remove") {
-      const existingNode = this.#getNodeAt(blockConfig, batchObj.index);
-      if (!existingNode || existingNode === blockConfig.endRef) return;
+      const { indexRefs, endRef, childBlocks } = blockConfig;
+      const { index } = batchObj;
+      const existingNode = this.#getNodeAt(blockConfig, index);
+      indexRefs.splice(index, 1);
+      if (!existingNode || existingNode === endRef) return;
 
       const prevBlockId = existingNode.blockId;
 
       existingNode.remove();
 
       this.#unmount(prevBlockId);
-      blockConfig.childBlocks.delete(prevBlockId);
+      childBlocks.delete(prevBlockId);
+
+      for (let i = index; i < indexRefs.length; i++) {
+        indexRefs[i].set(i);
+      }
     }
 
     if (batchObj.type === "removeRange") {
-      const existingNodes = this.#getNodesInRange(
-        blockConfig,
-        batchObj.start,
-        batchObj.end - 1,
-      );
+      const { start, end } = batchObj;
+      const { indexRefs } = blockConfig;
+      const existingNodes = this.#getNodesInRange(blockConfig, start, end - 1);
+
+      indexRefs.splice(start, end - start);
 
       for (let node of existingNodes) {
         if (!node || node === blockConfig.endRef) continue;
@@ -1898,26 +1932,37 @@ class VebelJS {
         this.#unmount(prevBlockId);
         blockConfig.childBlocks.delete(prevBlockId);
       }
+
+      for (let i = start; i < indexRefs.length; i++) {
+        indexRefs[i].set(i);
+      }
     }
 
     if (batchObj.type === "set") {
       const newList: any[] = blockConfig.data.eval();
 
+      const { indexRefs } = blockConfig;
+
       let parent = blockConfig.startRef.parentNode;
       if (!parent)
         throw new VebelError(
-          "No parent detected of 'For' loop, pass 'wrap' property to 'For' component.",
+          "For",
+          "no parent element detected. Wrap <For> inside a single parent element.",
         );
       const oldList: any[] = batchObj.oldValue;
 
       const oldNodes = this.#getNodesInRange(blockConfig, 0, oldList.length);
 
-      const keyExtractor = blockConfig.keyExtractor || ((_, i) => i);
+      const keyExtractor = blockConfig.keyExtractor || ((_, i) => i());
 
-      const oldMap: Map<string, { node: ChildNode; index: number }> = new Map();
+      const oldMap: Map<
+        string,
+        { node: ChildNode; index: number; indexRef: State<number> }
+      > = new Map();
+      const newIndexRefs: Array<any> = [];
 
       oldList.forEach((item, i) => {
-        const key = keyExtractor(item, i);
+        const key = keyExtractor(item, indexRefs[i]);
 
         if (
           key === null ||
@@ -1925,9 +1970,8 @@ class VebelJS {
           (typeof key !== "string" && typeof key !== "number")
         ) {
           throw new VebelError(
-            `Invalid keyExtractor return value at index ${i}: ` +
-              `'${JSON.stringify(key)}'. ` +
-              `Expected string or number.`,
+            "For",
+            `keyExtractor returned '${JSON.stringify(key)}' at index ${i}. Expected a string or number.`,
           );
         }
 
@@ -1937,6 +1981,7 @@ class VebelJS {
           oldMap.set(String(key), {
             node,
             index: i,
+            indexRef: indexRefs[i],
           });
         }
       });
@@ -1947,30 +1992,35 @@ class VebelJS {
       );
 
       (newList ?? []).forEach((item, j) => {
-        const key = String(keyExtractor(item, j));
+        const key = String(keyExtractor(item, () => j));
         if (key === "undefined" || key === "null") {
           throw new VebelError(
-            `[keyExtractor]: Received null/undefined key. Your items may be missing the expected "id" property or it is not valid.`,
+            "For",
+            'keyExtractor returned null or undefined. The expected "id" property may be missing or invalid.',
           );
         }
         const existing = oldMap.get(key);
 
         if (existing) {
-          const oldItem = oldList[existing.index];
+          const { indexRef, node, index } = existing;
+          indexRef.set(j);
+          newIndexRefs[j] = indexRef;
 
-          let crrNode = existing.node;
+          const oldItem = oldList[index];
+
+          let crrNode = node;
 
           if (!isEqual(oldItem, item)) {
             const blockId = this.#setUpBlock();
             blockConfig.childBlocks.add(blockId);
-            crrNode = blockConfig.renderElement(item, j);
+            crrNode = blockConfig.renderElement(item, indexRef);
             this.#blockStack.pop();
 
             crrNode.blockId = blockId;
 
-            const prevBlockId = existing.node?.blockId;
+            const prevBlockId = node?.blockId;
 
-            existing.node.replaceWith(crrNode);
+            node.replaceWith(crrNode);
             this.#unmount(prevBlockId);
             blockConfig.childBlocks.delete(prevBlockId);
           }
@@ -1981,9 +2031,13 @@ class VebelJS {
           }
           oldMap.delete(key);
         } else {
+          const indexRef = this.state(j);
+          newIndexRefs[j] = indexRef;
+
           const blockId = this.#setUpBlock();
           blockConfig.childBlocks.add(blockId);
-          const node = blockConfig.renderElement(item, j);
+          const node = blockConfig.renderElement(item, indexRef);
+
           this.#blockStack.pop();
 
           node.blockId = blockId;
@@ -1994,6 +2048,8 @@ class VebelJS {
 
       this.#scopeStack.pop();
       this.#scopeStack.pop();
+
+      blockConfig.indexRefs = newIndexRefs;
 
       oldMap.forEach(({ node }) => {
         if (node) {
@@ -2123,7 +2179,6 @@ class VebelJS {
           this.#ensureDelegatedListener(type);
         } else {
           // Direct listener fallback
-          // elem.addEventListener(type, val);
           elem.addEventListener(type, (nativeEvent: Event) => {
             const syntheticEvent = new SyntheticEvent(nativeEvent);
             syntheticEvent.currentTarget = elem;
@@ -2141,17 +2196,15 @@ class VebelJS {
           case "ref": {
             if (val._tag && val._tag !== tag) {
               throw new VebelError(
-                `[Vebel.Ref]: Tag mismatch, expected <${val._tag}> but got <${tag}>`,
+                "Ref",
+                `tag mismatch. Expected <${val._tag}> but received <${tag}>.`,
               );
             }
 
             if (val.el && val.el !== elem) {
               throw new VebelError(
-                `[Vebel.Ref]: Ref already attached to another previous element <${val._tag}>.`,
-                //  {
-                //    previousEl: val.el,
-                //    newEl: elem,
-                //  },
+                "Ref",
+                `ref is already attached to another <${val._tag}> element.`,
               );
             }
 
@@ -2198,10 +2251,6 @@ class VebelJS {
             break;
           }
 
-          case "viewbox": {
-            elem.setAttribute("viewBox", val);
-            break;
-          }
           default: {
             if (isJSXExpressionObj(val)) {
               const value = val.eval();
@@ -2220,8 +2269,6 @@ class VebelJS {
 
               elem.setAttribute(key, value);
             } else {
-              // const ss = document.createElementNS("http://www.w3.org/2000/svg","svg");
-
               elem.setAttribute(key, val);
             }
             break;
@@ -2285,6 +2332,10 @@ class VebelJS {
     index?: number,
     isPortalContainer = false,
   ) {
+    if (child === true) {
+      return;
+    }
+
     if (typeof child === "number" || typeof child === "string") {
       this.#addChildToDom(
         document.createTextNode(String(child)),
@@ -2297,7 +2348,8 @@ class VebelJS {
     if (isJSXConditionObj(child)) {
       if (container instanceof DocumentFragment) {
         throw new VebelError(
-          `[Vebel.Fragment]: Can't use dynamic values directly inside fragment. Wrap it in an HTML element.`,
+          "Fragment",
+          "cannot use dynamic values directly inside a Fragment. Wrap them in an HTML element.",
         );
       }
 
@@ -2309,7 +2361,8 @@ class VebelJS {
     if (isJSXExpressionObj(child)) {
       if (container instanceof DocumentFragment) {
         throw new VebelError(
-          `[Vebel.Fragment]: Can't use dynamic values directly inside fragment. Wrap it in an HTML element.`,
+          "Fragment",
+          "cannot use dynamic values directly inside a Fragment. Wrap them in an HTML element.",
         );
       }
 
@@ -2318,15 +2371,12 @@ class VebelJS {
       const cmpId = component.id;
 
       const value = child.eval();
-      if (Array.isArray(value)) {
-        if (isPortalContainer) {
-          this.#addMicrotask(() => container.append(...value));
-        } else {
-          container.append(...value);
-        }
-      } else {
-        this.#addChildToDom(value, isPortalContainer, container);
-      }
+
+      this.#addChildToDom(
+        this.#unifyNodeValue(value),
+        isPortalContainer,
+        container,
+      );
 
       for (let state of child?.states) {
         this.#addStateUsageRef(state, {
@@ -2345,13 +2395,15 @@ class VebelJS {
 
     if (isLazyChildren(child)) {
       throw new VebelError(
-        "[Vebel.Component]: Async component (dynamic imported component) only allowed inside <Await>.",
+        "Component",
+        "Async components are only allowed inside <Await>.",
       );
     }
 
     if (typeof child === "function" || isPlainObject(child)) {
       throw new VebelError(
-        "[Vebel.Component]: Functions and Objects are not allowed as children.",
+        "Component",
+        "functions and objects are not valid children.",
       );
     }
 
@@ -2374,8 +2426,8 @@ function For<V>({
   children,
 }: {
   each: V[];
-  keyExtractor: (item: V, index: number) => string | number;
-  children: (item: V, index: number) => HTMLElement;
+  keyExtractor: (item: V, index: State<number>) => string | number;
+  children: (item: V, index: State<number>) => HTMLElement;
 }): DocumentFragment {
   return Vebel.For(each, children, keyExtractor);
 }
