@@ -1,6 +1,6 @@
 {
   "name": "@vebeljs/vebel",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Lightweight JSX framework with fine-grained reactivity — no virtual DOM, no full re-renders.",
   "author": "Himanshu chaudhari",
   "license": "MIT",
