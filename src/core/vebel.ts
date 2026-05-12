@@ -1584,6 +1584,7 @@ class VebelJS {
           data,
           startRef,
           endRef,
+          indexRefs,
         },
       });
     }
@@ -1806,7 +1807,7 @@ class VebelJS {
 
     const reEval = crrVal ? ifBlock.thenReEval : ifBlock.elseReEval;
 
-    if (ifBlock.prevVal !== crrVal) {
+    if (ifBlock.prevVal !== crrVal || reEval) {
       let current = ifBlock.startRef.nextSibling;
 
       while (current && current !== ifBlock.endRef) {
@@ -1833,6 +1834,7 @@ class VebelJS {
   ) {
     if (batchObj.type === "update") {
       const { index, value } = batchObj;
+      console.log("index, value: ", index, value);
       const existingNode = this.#getNodeAt(blockConfig, index);
 
       if (!existingNode) return;
@@ -1844,6 +1846,7 @@ class VebelJS {
       );
 
       const blockId = this.#setUpBlock();
+      console.log(" blockConfig.indexRefs: ", blockConfig.indexRefs);
       blockConfig.childBlocks.add(blockId);
       let newNode = blockConfig.renderElement(
         value,
@@ -2237,6 +2240,11 @@ class VebelJS {
             } else {
               elem.setAttribute("class", val);
             }
+            break;
+          }
+
+          case "viewbox": {
+            elem.setAttribute("viewBox", value);
             break;
           }
 

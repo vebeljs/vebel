@@ -522,8 +522,63 @@ module.exports = function ({ types: t }) {
 
           if (exprPath?.isConditionalExpression()) return;
 
+          if (exprPath?.isLogicalExpression()) return;
+
+          if (isComponentPropExpression(path, this.systemComponents)) return;
+
           const statesRef = (state && state.stateTable) || this.stateTable;
           if (!statesRef) return;
+
+          if (exprPath?.isArrayExpression()) {
+            const flatElements = flattenArrayElements(
+              exprPath.get("elements"),
+              statesRef,
+            );
+
+            path.replaceWith(
+              t.jsxExpressionContainer(t.arrayExpression(flatElements)),
+            );
+
+            path.skip();
+
+            return;
+          }
+
+          const node = exprPath.node;
+
+          // Traverse only the expression subtree with correct scope/parent info
+          const stateVars = traverseNode(exprPath, statesRef);
+
+          if (!stateVars.length) return;
+
+          const stateArr = getStateConfig(stateVars);
+
+          const wrappedExpression = t.objectExpression([
+            t.objectProperty(
+              t.identifier("states"),
+              t.arrayExpression(stateArr),
+            ),
+            t.objectProperty(
+              t.identifier("eval"),
+              t.arrowFunctionExpression([], node),
+            ),
+          ]);
+
+          // Replace the JSXExpressionContainer with the object wrapped in a JSXExpressionContainer
+          path.replaceWith(t.jsxExpressionContainer(wrappedExpression));
+
+          // CRITICAL: skip traversing the just-created node to avoid re-entering plugin logic
+          path.skip();
+        },
+        exit(path, state) {
+          const exprPath = path.get("expression");
+
+          if (!exprPath || !exprPath.node) return;
+
+          if (t.isJSXEmptyExpression(exprPath)) return;
+
+          const stateRef = (state && state.stateTable) || this.stateTable;
+          if (!stateRef) return;
 
           if (exprPath?.isLogicalExpression()) {
             const { left, right, operator } = exprPath.node;
@@ -531,7 +586,7 @@ module.exports = function ({ types: t }) {
             const leftPath = exprPath.get("left");
             const rightPath = exprPath.get("right");
 
-            const leftStateVars = traverseNode(leftPath, statesRef);
+            const leftStateVars = traverseNode(leftPath, stateRef);
 
             if (!leftStateVars.length) return;
 
@@ -555,7 +610,7 @@ module.exports = function ({ types: t }) {
 
               const rightReEval = isPrimitiveReactiveBranch(
                 rightPath,
-                statesRef,
+                stateRef,
               );
 
               const thenReEval = operator === "&&" ? rightReEval : true;
@@ -608,64 +663,13 @@ module.exports = function ({ types: t }) {
 
               return;
             }
-          }
-
-          if (isComponentPropExpression(path, this.systemComponents)) return;
-
-          if (exprPath?.isArrayExpression()) {
-            const flatElements = flattenArrayElements(
-              exprPath.get("elements"),
-              statesRef,
-            );
-
-            path.replaceWith(
-              t.jsxExpressionContainer(t.arrayExpression(flatElements)),
-            );
-
-            path.skip();
 
             return;
           }
 
-          const node = exprPath.node;
-
-          // Traverse only the expression subtree with correct scope/parent info
-          const stateVars = traverseNode(exprPath, statesRef);
-
-          if (!stateVars.length) return;
-
-          const stateArr = getStateConfig(stateVars);
-
-          const wrappedExpression = t.objectExpression([
-            t.objectProperty(
-              t.identifier("states"),
-              t.arrayExpression(stateArr),
-            ),
-            t.objectProperty(
-              t.identifier("eval"),
-              t.arrowFunctionExpression([], node),
-            ),
-          ]);
-
-          // Replace the JSXExpressionContainer with the object wrapped in a JSXExpressionContainer
-          path.replaceWith(t.jsxExpressionContainer(wrappedExpression));
-
-          // CRITICAL: skip traversing the just-created node to avoid re-entering plugin logic
-          path.skip();
-        },
-        exit(path, state) {
-          const exprPath = path.get("expression");
-
-          if (!exprPath || !exprPath.node) return;
-
           if (!exprPath.isConditionalExpression()) return;
 
-          if (t.isJSXEmptyExpression(exprPath)) return;
-
           if (isComponentPropExpression(path, this.systemComponents)) return;
-
-          const stateRef = (state && state.stateTable) || this.stateTable;
-          if (!stateRef) return;
 
           const { test, consequent, alternate } = exprPath.node;
 

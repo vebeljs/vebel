@@ -1,0 +1,40 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.button {
+  padding: 10px 24px;
+  border-radius: 8px;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.button.purple {
+  background: #6675ee;
+}
+
+.button.orange {
+  background: #f78166;
+}
+
+.button.reset {
+  border: 2px solid #8b949e;
+  background: transparent;
+  color: #8b949e;
+  font-size: 1rem;
+}
+
+.input-box {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 2px solid #6675ee;
+  background: #21262d;
+  outline: none;
+  font-size: 1rem;
+  width: 70%;
+  color: #e6edf3;
+}
