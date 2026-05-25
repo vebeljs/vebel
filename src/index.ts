@@ -9,6 +9,8 @@ import {
   Fragment,
 } from "./core/vebel";
 
+import { Api } from "./core/api";
+
 const { defineRoutes, getHash, getQueryParams, getRouterParams, getPathName } =
   Navigation;
 
@@ -52,6 +54,7 @@ export {
   preservedState,
   useRouteEffect,
   Link,
+  Api,
 };
 
 function jsx(fn, props) {
